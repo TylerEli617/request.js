@@ -16,9 +16,9 @@
 
 (function(document)
 {
-    var disableRequireOfDeferedModule = false;
     var globalEval = eval;
     var modules = {};
+    var scriptroot = "";
     
     function getModule(id)
     {
@@ -41,50 +41,29 @@
         this.requests = [];
         this.error = null;
         
-        if (disableRequireOfDeferedModule)
+        this.require = function()
         {
-            this.require = function()
+            if (this.usedDefer)
             {
-                if (this.usedDefer)
-                {
-                    throw new Error("You are attempting to require a module that should only be loaded with a request.");
-                }
-                else if (this.state == "loaded")
-                {
-                    return this.exports;
-                }
-                else if (this.state == "failed")
-                {
-                    throw this.error;
-                }
-                else
-                {
-                    return this.synchronusStateTransition();
-                }
-            };
-        }
-        else
-        {
-            this.require = function()
+                throw new Error("You are attempting to require a module that should only be loaded with a request.");
+            }
+            else if (this.state == "loaded")
             {
-                if (this.state == "loaded")
-                {
-                    return this.exports;
-                }
-                else if (this.state == "failed")
-                {
-                    throw this.error;
-                }
-                else if (this.state == "loading")
-                {
-                    throw new Error("You are attempting to require a module that is executing a defered load.");
-                }
-                else
-                {
-                    return this.synchronusStateTransition();
-                }
-            };
-        }
+                return this.exports;
+            }
+            else if (this.state == "loading")
+            {
+                return this.exports;
+            }
+            else if (this.state == "failed")
+            {
+                throw this.error;
+            }
+            else
+            {
+                return this.synchronusStateTransition();
+            }
+        };
         
         this.request = function(fulfill, reject)
         {
@@ -318,12 +297,13 @@
         {
             return id;
         }
-        else
+        else if (id[0] == ".")
         {
-            if (id[0] != "/")
-            {
-                id = perspective + id
-            }
+            id = perspective + id
+        }
+        else if (id[0] != "/")
+        {
+            id = scriptroot + "/" + id;
         }
         
         var idParts = id.split("/");
@@ -413,5 +393,10 @@
         getModule(normalizeID(id, perspective)).request(fulfill, reject);
     }
     
-    perspectiveRequest(document.currentScript.dataset.main, "", null, function(error){throw error;});
+    if (document.currentScript.dataset.scriptroot)
+    {
+        scriptroot = document.currentScript.dataset.scriptroot;
+    }
+    
+    perspectiveRequest(document.currentScript.dataset.main, scriptroot, null, function(error){throw error;});
 }(document))
