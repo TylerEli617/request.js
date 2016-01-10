@@ -12,32 +12,72 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-*/   
+*/
 
 (function(document)
 {
     var globalEval = eval;
     var modules = {};
     var scriptroot = "";
-    
+    var mainModule = undefined;
+    var paths = [];
+
     function getModule(id)
     {
         if (!modules[id])
         {
             modules[id] = new Module(id);
+
+            if (!mainModule)
+            {
+                mainModule = modules[id];
+            }
         }
-        
+
         return modules[id];
     }
-    
+
     function Module(id)
     {
         this.state = "initial";
         this.exports = {};
-        this.id = id;
         this.source = "";
         this.error = null;
-        
+
+        var _id = id;
+
+        function accessID()
+        {
+            this.get = function()
+            {
+                return _id;
+            }
+            this.set = function(value)
+            {
+            }
+        }
+
+        Object.defineProperty(this, "id", new accessID());
+
+        var _uri = undefined;
+
+        function accessURI()
+        {
+            this.get = function()
+            {
+                return _uri;
+            }
+            this.set = function(value)
+            {
+                if (!_uri)
+                {
+                    _uri = value;
+                }
+            }
+        }
+
+        Object.defineProperty(this, "uri", new accessURI());
+
         this.require = function()
         {
             if (this.state == "loaded")
@@ -57,26 +97,26 @@
                 return this.synchronusStateTransition();
             }
         };
-        
+
         this.synchronusStateTransition = function()
         {
             if (this.state == "initial")
             {
                 this.acquiringSource();
             }
-            
+
             try
             {
-                this.setSource(getSource(this.id));
+                this.setSource(getSource(this));
             }
             catch (error)
             {
                 this.fail(error);
                 throw error;
             }
-            
+
             this.loadModule();
-            
+
             if (this.state == "loading")
             {
                 throw new Error("You are attempting to require a module that is executing a defered load.");
@@ -85,63 +125,78 @@
             {
                 throw this.error;
             }
-            
+
             return this.exports;
         };
-        
+
         this.stable = function()
         {
             return ((this.state == "failed") || (this.state == "loaded"));
         };
-        
+
         this.fail = function(error)
         {
             if (this.stable())
             {
                 throw new Error("The module " + id + " is in a stable state and can not go into the failed state.");
             }
-            
+
             this.state = "failed";
             this.error = error;
         };
-        
+
         this.acquiringSource = function()
         {
             if (this.state != "initial")
             {
                 throw new Error("A module can only transition to the acquiring source state from the initial state.");
             }
-            
+
             this.state = "acquiring source";
         };
-        
+
         this.setSource = function(source)
         {
             if (this.state != "acquiring source")
             {
                 throw new Error("A module's source can only be set after it has entered the acquiring source state.");
             }
-            
+
             this.state = "sourced";
             this.source = source;
         };
-        
+
         this.loadModule = function()
         {
             if (this.state != "sourced")
             {
                 throw new Error("A module can only be loaded after it has entered the sourced state.");
             }
-            
+
             this.state = "loading";
             var module = this;
             var perspective = this.id.substring(0, this.id.lastIndexOf("/") + 1);
-            
+
             function require(id)
             {
                 return perspectiveRequire(id, perspective);
             }
-            
+
+            require.paths = paths;
+
+            function accessMain()
+            {
+                this.get = function()
+                {
+                    return mainModule;
+                }
+                this.set = function(value)
+                {
+                }
+            }
+
+            Object.defineProperty(require, "main", new accessMain());
+
             try
             {
                 (globalEval("(function(require, module, exports){" + this.source + "})"))(require, this, this.exports);
@@ -153,7 +208,7 @@
             }
         }
     }
-    
+
     function normalizeID(id, perspective)
     {
         if (id.indexOf("://") != -1)
@@ -168,7 +223,7 @@
         {
             id = scriptroot + "/" + id;
         }
-        
+
         var idParts = id.split("/");
         var idPartsCount = idParts.length;
         var normalizedIDParts = [];
@@ -203,14 +258,15 @@
         return normalizedID;
     }
 
-    function getSource(id)
+    function getSource(module)
     {
         var moduleRequest = new XMLHttpRequest();
-        moduleRequest.open("GET", id + ".js", false);
+        moduleRequest.open("GET", module.id + ".js", false);
         moduleRequest.send(null);
 
         if ((moduleRequest.readyState == XMLHttpRequest.DONE) && (moduleRequest.status == 200))
         {
+            module.uri = moduleRequest.responseURL;
             return moduleRequest.response;
         }
         else
@@ -223,11 +279,11 @@
     {
         return getModule(normalizeID(id, perspective)).require();
     }
-    
+
     if (document.currentScript.dataset.scriptroot)
     {
         scriptroot = document.currentScript.dataset.scriptroot;
     }
-    
+
     perspectiveRequire(document.currentScript.dataset.main, scriptroot);
 }(document))
